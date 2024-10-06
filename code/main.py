@@ -1,5 +1,32 @@
+from enum import Enum 
 
+class Opcode(Enum):
+    LOAD = 0b0000011
+    STORE = 0b0100011
+    BRANCH = 0b1100011
+    JALR = 0b1100111
+    JAL = 0b1101111
+    OP_IMM = 0b0010011
+    OP = 0b0110011
+    LUI = 0b0110111
+    AUIPC = 0b0010111
+    SYSTEM = 0b1110011
 
+class Funct3(Enum):
+    ADD_SUB = 0b000
+    SLL = 0b001
+    SLT = 0b010
+    SLTU = 0b011
+    XOR = 0b100
+    SRL_SRA = 0b101
+    OR = 0b110
+    AND = 0b111
+
+class Funct7(Enum):
+    ADD = 0b0000000
+    SUB = 0b0100000
+    SRL = 0b0000000
+    SRA = 0b0100000
 
 class RISCV32_RegisterFile:
     """
@@ -57,12 +84,98 @@ class RISCV32_RegisterFile:
             print(f"{key}: {value}")
     
 
+def IFetch(program_counter: int) -> int:
+    """
+    Program Counter: 32-bit integer
+    Instructions are read from imem.txt in big endian format 
+    where each line is a byte in binary format. For example, first word is at lines 0-3
+    00000000: 00000000
+    00000001: 00000000
+    00000002: 00000000
+    00000003: 00000000
+
+    Given PC as base address, construct 32-bit instruction
+    based on base + 3 next bytes on following lines
+    """
+    with open("imem.txt", "r") as file:
+        lines = file.readlines()
+        instruction = 0x0
+        for i in range(4):
+            # parse line as byte as binary format
+            byte = int(lines[program_counter + i], 2)
+            # reverse bits of byte
+            # byte = int('{:08b}'.format(byte)[::-1], 2)
+            instruction = instruction << 8
+            instruction = instruction | byte
+        
+        # Reverse bits
+        instruction = int('{:032b}'.format(instruction)[::-1], 2)
+        print(bin(instruction))
+
+        return instruction
+    
+def IDecode(instruction: int) -> str:
+    """
+    Decodes the given 32-bit instruction based on RV32I ISA.
+    
+    Args:
+    instruction (int): The 32-bit instruction to decode.
+    
+    Returns:
+    str: A human-readable form of the decoded instruction.
+    """
+    
+
+    if Opcode(opcode) == Opcode.OP_IMM:
+        if Funct3(funct3) == Funct3.ADD_SUB:
+            return f"ADDI x{rd}, x{rs1}, {imm_i:#x}"
+        elif Funct3(funct3) == Funct3.SLL:
+            return f"SLLI x{rd}, x{rs1}, {imm_i & 0x1F}"
+        # Add more cases for OP-IMM
+    elif Opcode(opcode) == Opcode.OP:
+        if Funct3(funct3) == Funct3.ADD_SUB:
+            if Funct7(funct7) == Funct7.ADD:
+                return f"ADD x{rd}, x{rs1}, x{rs2}"
+            elif Funct7(funct7) == Funct7.SUB:
+                return f"SUB x{rd}, x{rs1}, x{rs2}"
+        elif Funct3(funct3) == Funct3.SRL_SRA:
+            if Funct7(funct7) == Funct7.SRL:
+                return f"SRL x{rd}, x{rs1}, x{rs2}"
+            elif Funct7(funct7) == Funct7.SRA:
+                return f"SRA x{rd}, x{rs1}, x{rs2}"
+        # Add more cases for OP
+    elif Opcode(opcode) == Opcode.LOAD:
+        return f"LOAD x{rd}, {imm_i}(x{rs1})"
+    elif Opcode(opcode) == Opcode.STORE:
+        return f"STORE x{rs2}, {imm_s}(x{rs1})"
+    elif Opcode(opcode) == Opcode.BRANCH:
+        if Funct3(funct3) == Funct3.ADD_SUB:
+            return f"BEQ x{rs1}, x{rs2}, {imm_b:#x}"
+        # Add more cases for BRANCH
+    elif Opcode(opcode) == Opcode.JAL:
+        return f"JAL x{rd}, {imm_j:#x}"
+    elif Opcode(opcode) == Opcode.JALR:
+        return f"JALR x{rd}, {imm_i:#x}(x{rs1})"
+    elif Opcode(opcode) == Opcode.LUI:
+        return f"LUI x{rd}, {imm_u:#x}"
+    elif Opcode(opcode) == Opcode.AUIPC:
+        return f"AUIPC x{rd}, {imm_u:#x}"
+    elif Opcode(opcode) == Opcode.SYSTEM:
+        return f"SYSTEM call or ebreak"
+
+    return "Unknown instruction"
+
+    
+    
+    
 
 class SingleStageRV:
     def __init__(self):
         self.registers = RISCV32_RegisterFile()
+        self.program_counter = 0x0
+        self.current_instruction = 0x0
 
-    def print_registers(self):
+    def print_registers(self) -> None:
         self.registers.display()
         self.registers.write_register("x1", 0x1234)
         print(self.registers.read_register("x1"))
@@ -70,7 +183,15 @@ class SingleStageRV:
         self.registers.reset_registers()
         self.registers.display()
 
+    def fetch(self) -> None:
+        self.current_instruction = IFetch(0)
+
+    def decode(self) -> None:
+        IDecode(self.current_instruction)
+       
+
 if __name__ == '__main__':
     single_stage = SingleStageRV()
-    single_stage.print_registers()  
+    single_stage.fetch()
+    single_stage.decode()
     
